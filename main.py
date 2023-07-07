@@ -1,40 +1,18 @@
 # my modules
-import topg
-import runelocus
-import moparscape
-import captchasolver
-import rspslist
 import piavpn
+from driver_utils import create_driver, create_wait
 
 # other modules
 import importlib
+import json
 import requests
-from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.support import expected_conditions as ec
-from selenium.webdriver.support.ui import WebDriverWait, Select
-from webdriver_manager.chrome import ChromeDriverManager
 
-# Add options to chrome
-options = webdriver.ChromeOptions()
-options.add_experimental_option("useAutomationExtension", False)
-options.add_experimental_option("excludeSwitches", ["enable-automation"])
-options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
-                     "Chrome/113.0.0.0 Safari/537.36")
-options.add_argument("--disable-infobars")
-options.add_argument("--disable-notifications")
-options.add_argument("--disable-blink-features")
 
-# Create a ChromeService instance with the Chrome driver executable
-service = ChromeService(ChromeDriverManager().install())
-
-# Open browser
-driver = webdriver.Chrome(service=service, options=options)
-
-# Default wait time in seconds
-wait = WebDriverWait(driver, 5)
+driver = create_driver()
+wait = create_wait(driver, 5)
 driver.set_window_size(1920, 1080)
 
 # Set vote url
@@ -45,10 +23,11 @@ all_votable_sites = {1: "RuneLocus", 2: "", 3: "TopG", 4: "RSPS-List", 5: "", 6:
 
 def main():
     vote()
+    saveauth()
 
 
 def vote():
-    current_ip = requests.get(ip_url).text
+    current_ip = getip()
     driver.get(vote_url)
 
     try:
@@ -57,23 +36,73 @@ def vote():
         already_voted = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, already_voted_element)))
         print(f"{current_ip} | {already_voted.text}")
     except TimeoutException as e:
-        print(f"{current_ip} | You have not voted yet. Proceeding to vote...")
+        print(f"{current_ip} | You have not voted on all sites within the past 12 hours. Proceeding to vote...")
 
     votable_sites_dict = check_votable_sites()
 
     for siteid, value in votable_sites_dict.items():
         if not value:
-            votable_site = driver.find_element(By.CSS_SELECTOR, f'a[siteid="{siteid}"]')
+            votable_site = driver.find_element(By.CSS_SELECTOR, f'a[siteid=\'{siteid}\']')
             votable_site.click()
+
+            # Get all tabs
+            window_handles = driver.window_handles
+
+            # Switch driver focus to new tab
+            new_table_handle = window_handles[-1]
+            driver.switch_to.window(new_table_handle)
+
             site_name = all_votable_sites.get(int(siteid), "")
             module_name = site_name.lower().replace("-", "")
 
             try:
                 print(f"Voting on site: {site_name} (id: {siteid})")
                 module = importlib.import_module(module_name)
-                getattr(module, "vote")()
+                getattr(module, "vote")(driver, wait)
+                print(f"Cleaning up {site_name} tab.")
+                cleanup(window_handles)
             except ImportError:
                 print(f"Module {module_name} not found!")
+
+
+def saveauth():
+    current_ip = getip()
+    auth_code = getauth()
+    votable_sites_dict = check_votable_sites()
+
+    if any(value is False for value in votable_sites_dict.values()):
+        print("At least one website is votable still!")
+        print(votable_sites_dict)
+    else:
+        try:
+            with open("auth_codes.json", "r") as file:
+                data = json.load(file)
+        except FileNotFoundError:
+            data = {}
+
+        if current_ip in data:
+            ip_data = data[current_ip]
+        else:
+            ip_data = {}
+
+        authcode_keys = [key for key in ip_data.keys() if key.startswith("auth_")]
+        authcode_key = f"auth_{len(authcode_keys) + 1}"
+
+        ip_data[authcode_key] = auth_code
+
+        data[current_ip] = ip_data
+
+        with open("auth_codes.json", "w") as file:
+            json.dump(data, file, indent=4)
+
+
+def getauth():
+    authcode = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#notice-text")))
+    return authcode.text
+
+
+def getip():
+    return requests.get(ip_url).text
 
 
 def check_votable_sites():
@@ -93,6 +122,18 @@ def check_votable_sites():
 
     return votable_sites_dict
 
+
+def cleanup(window_handles):
+    driver.close()
+
+    main_tab_handle = window_handles[0]
+    driver.switch_to.window(main_tab_handle)
+
+
+driver.get(vote_url)
+input()
+saveauth()
+input()
 
 main()
 driver.quit()

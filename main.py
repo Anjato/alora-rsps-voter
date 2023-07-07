@@ -7,6 +7,7 @@ import rspslist
 import piavpn
 
 # other modules
+import importlib
 import requests
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
@@ -43,7 +44,6 @@ all_votable_sites = {1: "RuneLocus", 2: "", 3: "TopG", 4: "RSPS-List", 5: "", 6:
 
 
 def main():
-    #change_ip()
     vote()
 
 
@@ -66,7 +66,14 @@ def vote():
             votable_site = driver.find_element(By.CSS_SELECTOR, f'a[siteid="{siteid}"]')
             votable_site.click()
             site_name = all_votable_sites.get(int(siteid), "")
-            print(f"Voting on site: {site_name} (Id: {siteid})")
+            module_name = site_name.lower().replace("-", "")
+
+            try:
+                print(f"Voting on site: {site_name} (id: {siteid})")
+                module = importlib.import_module(module_name)
+                getattr(module, "vote")()
+            except ImportError:
+                print(f"Module {module_name} not found!")
 
 
 def check_votable_sites():

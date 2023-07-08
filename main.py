@@ -1,4 +1,5 @@
 # my modules
+import sql_database
 from driver_utils import create_driver, create_wait
 
 # other modules
@@ -24,7 +25,7 @@ vpn_regions_dict = {}
 
 def main():
     vote()
-    saveauth()
+    save_auth_json()
     changeip()
 
 
@@ -37,7 +38,7 @@ def vote():
         already_voted_element = ".vote_content > h2:nth-child(2)"
         already_voted = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, already_voted_element)))
         print(f"{current_ip} | {already_voted.text}")
-        saveauth()
+        save_auth_json()
     except TimeoutException as e:
         print(f"{current_ip} | You have not voted on all sites within the past 12 hours. Proceeding to vote...")
 
@@ -68,7 +69,8 @@ def vote():
                 print(f"Module {module_name} not found!")
 
 
-def saveauth():
+def save_auth_json():
+    get_vpn_regions()
     current_ip = getip()
     auth_code = getauth()
     votable_sites_dict = check_votable_sites()
@@ -99,6 +101,9 @@ def saveauth():
         with open("auth_codes.json", "w") as file:
             json.dump(data, file, indent=4)
 
+        current_region = subprocess.check_output("piactl get region", shell=True).decode("utf-8")
+        sql_database.save_data(current_ip, current_region, auth_code)
+
 
 def getauth():
     authcode = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#notice-text")))
@@ -106,12 +111,7 @@ def getauth():
 
 
 def changeip():
-    output = subprocess.check_output("piactl get regions", shell=True).decode("utf-8")
-    regions = output.strip().split("\n")
-
-    vpn_regions_dict.clear()
-    for index, region in enumerate(regions[1:], start=1):
-        vpn_regions_dict[index] = region
+    get_vpn_regions()
 
     print("Disconnecting from VPN")
     subprocess.check_output("piactl disconnect", shell=True)
@@ -134,6 +134,15 @@ def changeip():
         print(output.strip())
 
     main()
+
+
+def get_vpn_regions():
+    output = subprocess.check_output("piactl get regions", shell=True).decode("utf-8")
+    regions = output.strip().split("\n")
+
+    vpn_regions_dict.clear()
+    for index, region in enumerate(regions[1:], start=1):
+        vpn_regions_dict[index] = region
 
 
 def getip():

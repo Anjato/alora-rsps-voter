@@ -1,2 +1,30 @@
-def vote():
-    print("Vote from MoparScape!")
+from captchasolver import recaptcha2_solver
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as ec
+
+
+def vote(driver, wait):
+
+    captcha = wait.until(ec.element_to_be_clickable((By.CSS_SELECTOR, ".g-recaptcha")))
+    hidden_recaptcha_response = wait.until(ec.invisibility_of_element_located((By.CSS_SELECTOR, '[name="g-recaptcha-response"]')))
+    submit_vote_button = wait.until(ec.element_to_be_clickable((By.CSS_SELECTOR, "button.btn:nth-child(5)")))
+
+    sitekey = captcha.get_attribute("data-sitekey")
+    url = driver.current_url
+
+    print("Solving MoparScape captcha...")
+    captcha_result = recaptcha2_solver(sitekey, url)
+
+    driver.execute_script("arguments[0].value = arguments[1];", hidden_recaptcha_response, captcha_result)
+
+    submit_vote_button.click()
+
+    try:
+        vote_success = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-success")))
+        print("Voted on MoparScape successfully!")
+    except TimeoutException as e:
+        vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
+        print("MoparScape vote FAILED!")
+        print(f"ERROR: {e}")
+

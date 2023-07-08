@@ -41,7 +41,7 @@ def vote(driver, wait):
     screenshot = captcha_image.screenshot_as_png
 
     image = Image.open(io.BytesIO(screenshot))
-    resized_image = image.resize((700, 600))
+    resized_image = image.resize((500, 400))
     resized_image.show()
 
     # Select correct dropdown menu choice

@@ -14,7 +14,12 @@ def vote(driver, wait):
     url = driver.current_url
 
     print("Solving MoparScape captcha...")
-    captcha_result = recaptcha2_solver(sitekey, url)
+
+    while True:
+        captcha_result = recaptcha2_solver(sitekey, url)
+
+        if captcha_result != False:
+            break
 
     driver.execute_script("arguments[0].value = arguments[1];", hidden_recaptcha_response, captcha_result)
 

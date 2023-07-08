@@ -1,29 +1,31 @@
 # my modules
-import piavpn
 from driver_utils import create_driver, create_wait
 
 # other modules
 import importlib
 import json
 import requests
+import subprocess
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as ec
 
 
 driver = create_driver()
-wait = create_wait(driver, 5)
+wait = create_wait(driver, 10)
 driver.set_window_size(1920, 1080)
 
 # Set vote url
 vote_url = "https://www.alora.io/vote/"
 ip_url = "https://api.my-ip.io/ip"
 all_votable_sites = {1: "RuneLocus", 2: "", 3: "TopG", 4: "RSPS-List", 5: "", 6: "", 7: "MoparScape", 8: "", 9: ""}
+vpn_regions_dict = {}
 
 
 def main():
     vote()
     saveauth()
+    changeip()
 
 
 def vote():
@@ -31,10 +33,11 @@ def vote():
     driver.get(vote_url)
 
     try:
-        # Check if already voted
+        # Check if already voted on all websites
         already_voted_element = ".vote_content > h2:nth-child(2)"
         already_voted = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, already_voted_element)))
         print(f"{current_ip} | {already_voted.text}")
+        saveauth()
     except TimeoutException as e:
         print(f"{current_ip} | You have not voted on all sites within the past 12 hours. Proceeding to vote...")
 
@@ -85,10 +88,11 @@ def saveauth():
         else:
             ip_data = {}
 
-        authcode_keys = [key for key in ip_data.keys() if key.startswith("auth_")]
-        authcode_key = f"auth_{len(authcode_keys) + 1}"
+        if auth_code not in ip_data.values():
+            authcode_keys = [key for key in ip_data.keys() if key.startswith("auth_")]
+            authcode_key = f"auth_{len(authcode_keys) + 1}"
 
-        ip_data[authcode_key] = auth_code
+            ip_data[authcode_key] = auth_code
 
         data[current_ip] = ip_data
 
@@ -99,6 +103,37 @@ def saveauth():
 def getauth():
     authcode = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#notice-text")))
     return authcode.text
+
+
+def changeip():
+    output = subprocess.check_output("piactl get regions", shell=True).decode("utf-8")
+    regions = output.strip().split("\n")
+
+    vpn_regions_dict.clear()
+    for index, region in enumerate(regions[1:], start=1):
+        vpn_regions_dict[index] = region
+
+    print("Disconnecting from VPN")
+    subprocess.check_output("piactl disconnect", shell=True)
+
+    output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
+    while output.strip() != "Unknown":
+        output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
+        print("Waiting for VPN to disconnect.")
+        print(output.strip() == "Unknown")
+
+    region_to_connect = vpn_regions_dict[1] if len(vpn_regions_dict) >= 2 else vpn_regions_dict.get(1)
+
+    subprocess.check_output(f"piactl set region {region_to_connect}", shell=True)
+    subprocess.check_output("piactl connect", shell=True)
+
+    output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
+    while output.strip() == "Unknown":
+        output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
+        print("Waiting for VPN to connect.")
+        print(output.strip())
+
+    main()
 
 
 def getip():
@@ -129,11 +164,6 @@ def cleanup(window_handles):
     main_tab_handle = window_handles[0]
     driver.switch_to.window(main_tab_handle)
 
-
-driver.get(vote_url)
-input()
-saveauth()
-input()
 
 main()
 driver.quit()

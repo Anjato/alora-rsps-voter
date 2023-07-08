@@ -14,6 +14,7 @@ def create_driver():
     options.add_argument("--disable-infobars")
     options.add_argument("--disable-notifications")
     options.add_argument("--disable-blink-features")
+    options.add_argument("--headless=new")
 
     # Create a ChromeService instance with the Chrome driver executable
     service = ChromeService(ChromeDriverManager().install())

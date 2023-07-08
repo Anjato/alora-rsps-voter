@@ -98,6 +98,7 @@ def save_auth_json():
 
         data[current_ip] = ip_data
 
+        print("Saving data to JSON file")
         with open("auth_codes.json", "w") as file:
             json.dump(data, file, indent=4)
 
@@ -117,23 +118,25 @@ def changeip():
     subprocess.check_output("piactl disconnect", shell=True)
 
     output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
+    print("Waiting for VPN to disconnect.")
     while output.strip() != "Unknown":
         output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
-        print("Waiting for VPN to disconnect.")
-        print(output.strip() == "Unknown")
 
-    region_to_connect = vpn_regions_dict[1] if len(vpn_regions_dict) >= 2 else vpn_regions_dict.get(1)
+    # Remove first entry in dictionary
+    vpn_regions_dict.pop(next(iter(vpn_regions_dict), None), None)
+
+    # Change region to connect to the first entry in the dictionary
+    region_to_connect = next(iter(vpn_regions_dict.values()), None)
 
     subprocess.check_output(f"piactl set region {region_to_connect}", shell=True)
     subprocess.check_output("piactl connect", shell=True)
 
+    print("Waiting for VPN to connect.")
     output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
     while output.strip() == "Unknown":
         output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
-        print("Waiting for VPN to connect.")
-        print(output.strip())
 
-    main()
+    #main()
 
 
 def get_vpn_regions():

@@ -1,4 +1,3 @@
-import time
 from captchasolver import hcaptcha_solver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
@@ -20,7 +19,6 @@ def vote(driver, wait):
     driver.execute_script("arguments[0].value = arguments[1];", hidden_element_one, captcha_result)
     driver.execute_script("arguments[0].value = arguments[1];", hidden_element_two, captcha_result)
 
-    print("sent keys")
     submit_vote_button.click()
 
     try:

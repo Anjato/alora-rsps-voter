@@ -41,12 +41,13 @@ def vote(driver, wait):
     screenshot = captcha_image.screenshot_as_png
 
     image = Image.open(io.BytesIO(screenshot))
-    image.show()
+    resized_image = image.resize((700, 600))
+    resized_image.show()
 
     # Select correct dropdown menu choice
     select = Select(answer)
 
-    user_input = input("How many runescape objects are in the image?")
+    user_input = input("How many runescape objects are in the image?\n")
 
     try:
         select.select_by_value(user_input)

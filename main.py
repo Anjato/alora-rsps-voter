@@ -106,13 +106,13 @@ def save_auth_json():
 
 
 def getauth():
+    # SOMETIMES THE AUTH CODE CAN CHANGE FOR WHATEVER REASON
+    # REFRESH PAGE 5ISH TIMES AND THEN GET THE CODE
     authcode = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#notice-text")))
     return authcode.text
 
 
 def changeip():
-    get_vpn_regions()
-
     print("Disconnecting from VPN")
     subprocess.check_output("piactl disconnect", shell=True)
 
@@ -174,5 +174,6 @@ def cleanup(window_handles):
     driver.switch_to.window(main_tab_handle)
 
 
+get_vpn_regions()
 main()
 driver.quit()

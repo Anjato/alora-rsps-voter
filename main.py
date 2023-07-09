@@ -1,6 +1,4 @@
 # my modules
-import time
-
 import sql_database
 from driver_utils import create_driver, create_wait
 
@@ -10,6 +8,7 @@ import importlib
 import json
 import requests
 import subprocess
+import time
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as ec

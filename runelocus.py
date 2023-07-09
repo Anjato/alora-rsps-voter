@@ -1,68 +1,54 @@
-import time
-from PIL import Image
-import io
-from selenium.common.exceptions import NoSuchElementException
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as ec
-from selenium.webdriver.support.ui import Select
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse, parse_qs
 
 
 def vote(driver, wait):
+    cookies = driver.get_cookies()
+    url = driver.current_url
+    parsed_url = urlparse(url)
+    query_params = parse_qs(parsed_url.query)
 
-    vote_wait_timer = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#timer-message")))
+    url_callback = query_params.get("callback", [None])[0]
 
-    while True:
-        try:
-            is_visible = vote_wait_timer.is_displayed()
-            is_active = vote_wait_timer.is_enabled()
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Origin': 'https://www.runelocus.com',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Referer': url,
+        'Cookie': '; '.join([f"{cookie['name']}={cookie['value']}" for cookie in cookies]),
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin',
+        'Sec-Fetch-User': '?1',
+        'Sec-GPC': '1'
+    }
 
-            if is_visible and is_active:
-                print("Waiting for captcha to load...")
-            else:
-                print("RuneLocus captcha loaded!")
-                break
+    for count in range(1, 6):
+        data = {
+            'countanswer': str(count),
+            'rf': 'K3M2S1RkdmRick9aM2R4K0RHbzNLUT09',
+            'callback': url_callback,
+            'ua': 'dnZ6T3RPVzgxMnhqWkx1RnBCWG90N0JobDkwTWZqN3E1M3F3OENXR2gvcmc1ckVKbTF1QVJ'
+                  'PeUNyc0tzMmE4eDNoNHQ3M045ZzIvZG1vaGl1Tmp6T3NrV0ZsTkpNSCtxMjJGUFNwY3dGaDQ9',
+            'vote': 'Vote now'
+        }
 
-        except NoSuchElementException as e:
-            print(f"Element could not be found!")
-            print(e)
+        response = requests.post(url, headers=headers, data=data)
+
+        html = response.text
+        soup = BeautifulSoup(html, "html.parser")
+        vote_result_element = soup.select_one("#vote-process-block")
+
+        if vote_result_element.text == "Thanks, your vote has been recorded!":
+            print("Voted on RuneLocus successfully!")
             break
-
-        time.sleep(0.5)
-
-    captcha_image_element = "#captchaimg"
-    answer_element = "#answer > select"
-    vote_button_element = "#vote"
-
-    captcha_image = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, captcha_image_element)))
-    answer = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, answer_element)))
-    vote_button = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, vote_button_element)))
-
-    # Screenshot image because URL being used generates a random image
-    screenshot = captcha_image.screenshot_as_png
-
-    image = Image.open(io.BytesIO(screenshot))
-    resized_image = image.resize((500, 400))
-    resized_image.show()
-
-    # Select correct dropdown menu choice
-    select = Select(answer)
-
-    user_input = input("How many runescape objects are in the image?\n")
-
-    try:
-        select.select_by_value(user_input)
-    except Exception as e:
-        print(e)
-
-    # Click the vote button
-    vote_button.click()
-
-    vote_result_element = "#vote-process-block:first-child"
-    vote_result = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, vote_result_element)))
-
-    if vote_result.text == "Thanks, your vote has been recorded!":
-        print("Voted on RuneLocus successfully!")
     else:
-        print(vote_result.text)
-        driver.back()
-        vote(driver, wait)
+        print("RuneLocus vote FAILED!")
+

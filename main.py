@@ -1,8 +1,11 @@
 # my modules
+import time
+
 import sql_database
 from driver_utils import create_driver, create_wait
 
 # other modules
+import atexit
 import importlib
 import json
 import requests
@@ -10,7 +13,6 @@ import subprocess
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as ec
-
 
 driver = create_driver()
 wait = create_wait(driver, 10)
@@ -25,7 +27,6 @@ vpn_regions_dict = {}
 
 def main():
     vote()
-    save_auth_json()
     changeip()
 
 
@@ -39,8 +40,9 @@ def vote():
         already_voted = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, already_voted_element)))
         print(f"{current_ip} | {already_voted.text}")
         save_auth_json()
-    except TimeoutException as e:
-        print(f"{current_ip} | You have not voted on all sites within the past 12 hours. Proceeding to vote...")
+        return
+    except TimeoutException:
+        print(f"{current_ip} | You have not voted on all sites within the past 12 hours. Proceeding to vote!")
 
     votable_sites_dict = check_votable_sites()
 
@@ -63,14 +65,15 @@ def vote():
                 print(f"Voting on site: {site_name} (id: {siteid})")
                 module = importlib.import_module(module_name)
                 getattr(module, "vote")(driver, wait)
-                print(f"Cleaning up {site_name} tab.")
+                print(f"Cleaning up {site_name} tab")
                 cleanup(window_handles)
             except ImportError:
                 print(f"Module {module_name} not found!")
 
+    save_auth_json()
+
 
 def save_auth_json():
-    get_vpn_regions()
     current_ip = getip()
     auth_code = getauth()
     votable_sites_dict = check_votable_sites()
@@ -78,6 +81,7 @@ def save_auth_json():
     if any(value is False for value in votable_sites_dict.values()):
         print("At least one website is votable still!")
         print(votable_sites_dict)
+        vote()
     else:
         try:
             with open("auth_codes.json", "r") as file:
@@ -107,9 +111,21 @@ def save_auth_json():
 
 
 def getauth():
-    # SOMETIMES THE AUTH CODE CAN CHANGE FOR WHATEVER REASON
-    # REFRESH PAGE 5ISH TIMES AND THEN GET THE CODE
-    authcode = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#notice-text")))
+    try:
+        authcode = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#notice-text")))
+        driver.refresh()
+
+        while True:
+            authcode = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#notice-text")))
+
+            if authcode.text == "------":
+                driver.refresh()
+            else:
+                break
+    except TimeoutException:
+        print("Failed to get auth code! Trying again")
+        main()
+
     return authcode.text
 
 
@@ -118,7 +134,7 @@ def changeip():
     subprocess.check_output("piactl disconnect", shell=True)
 
     output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
-    print("Waiting for VPN to disconnect.")
+    print("Waiting for VPN to disconnect")
     while output.strip() != "Unknown":
         output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
 
@@ -128,15 +144,19 @@ def changeip():
     # Change region to connect to the first entry in the dictionary
     region_to_connect = next(iter(vpn_regions_dict.values()), None)
 
+    # Allow VPN to disconnect for long enough before connecting
+    time.sleep(1)
+
     subprocess.check_output(f"piactl set region {region_to_connect}", shell=True)
     subprocess.check_output("piactl connect", shell=True)
 
-    print("Waiting for VPN to connect.")
+    print("Waiting for VPN to connect")
     output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
     while output.strip() == "Unknown":
         output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
 
-    #main()
+    print(f"New IP: {output}")
+    main()
 
 
 def get_vpn_regions():
@@ -177,6 +197,13 @@ def cleanup(window_handles):
     driver.switch_to.window(main_tab_handle)
 
 
+def application_exit():
+    print("Exiting application and cleaning up")
+    driver.quit()
+    subprocess.check_output("piactl disconnect", shell=True)
+
+
+atexit.register(application_exit)
 get_vpn_regions()
 main()
 driver.quit()

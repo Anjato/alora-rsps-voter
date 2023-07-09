@@ -4,7 +4,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as ec
 
 
-def vote(driver, wait):
+def vote(driver, wait, *args):
 
     captcha = wait.until(ec.element_to_be_clickable((By.CSS_SELECTOR, ".g-recaptcha")))
     hidden_recaptcha_response = wait.until(ec.invisibility_of_element_located((By.CSS_SELECTOR, '[name="g-recaptcha-response"]')))
@@ -31,5 +31,5 @@ def vote(driver, wait):
     except TimeoutException as e:
         vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
         print("MoparScape vote FAILED!")
-        print(f"ERROR: {e}")
+        print(f"ERROR: {vote_failed.text}")
 

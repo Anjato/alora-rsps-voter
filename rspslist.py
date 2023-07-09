@@ -13,6 +13,7 @@ def vote(driver, wait):
         spam_check = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#captcha-image")))
         driver.refresh()
         while spam_check is not None:
+            print("Spam check exists! Bypassing...")
             spam_check = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#captcha-image")))
             driver.refresh()
     except TimeoutException:
@@ -68,4 +69,4 @@ def vote(driver, wait):
     except TimeoutException as e:
         vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
         print("RSPS-List vote FAILED!")
-        print(f"ERROR: {e}")
+        print(f"ERROR: {vote_failed}")

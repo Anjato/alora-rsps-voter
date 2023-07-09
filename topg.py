@@ -32,5 +32,5 @@ def vote(driver, wait):
     except TimeoutException as e:
         vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
         print("TopG vote FAILED!")
-        print(f"ERROR: {e}")
+        print(f"ERROR: {vote_failed}")
 

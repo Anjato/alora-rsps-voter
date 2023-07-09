@@ -12,15 +12,17 @@ def get_connection_string():
 def save_data(ip, region, auth):
     connection_string = get_connection_string()
     connection = pyodbc.connect(connection_string)
-    print("Connecting to SQL database.")
+    print("Connecting to SQL database")
     try:
         with connection.cursor() as cursor:
             # Check if the auth code already exists for the given IP
             stored_procedure = "{CALL sp_FindDuplicateAuthCodes(?, ?)}"
-            cursor.execute(stored_procedure, ip, auth)
-            duplicate_found = cursor.fetchone()[0]
+            cursor.execute(stored_procedure, (ip, auth))
+            result = cursor.fetchone()
+            duplicate_found = result is not None
             if duplicate_found:
-                print("Duplicate IP and auth code found. Skipping data insertion.")
+                duplicate_ip, duplicate_auth_code = result
+                print(f"Duplicate IP and auth code found: IP={duplicate_ip}, Auth code={duplicate_auth_code}. Skipping data insertion")
                 return
 
             current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

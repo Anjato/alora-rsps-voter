@@ -5,6 +5,7 @@ from driver_utils import create_driver, create_wait
 # other modules
 import atexit
 import colorlog
+import concurrent
 import importlib
 import json
 import logging as log
@@ -13,82 +14,122 @@ import requests
 import subprocess
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as ec
-
-driver = create_driver()
-wait = create_wait(driver, 10)
-driver.set_window_size(1920, 1080)
 
 # Set vote url
 vote_url = "https://www.alora.io/vote/"
 all_votable_sites = {1: "RuneLocus", 2: "", 3: "TopG", 4: "RSPS-List", 5: "", 6: "", 7: "MoparScape", 8: "", 9: ""}
 vpn_regions_list = []
+voted_sites = []
 
 
 def main():
-    vote()
+    setup_logging()
+    atexit.register(application_exit)
+
+    get_vpn_regions()
     change_ip()
 
-
-def vote():
-    current_ip = get_ip()
+    driver = create_driver()
+    wait = create_wait(driver, 10)
+    driver.set_window_size(1920, 1080)
     driver.get(vote_url)
 
-    try:
-        # Check if already voted on all websites
-        already_voted_element = ".vote_content > h2:nth-child(2)"
-        already_voted = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, already_voted_element)))
-        log.info(f"{current_ip} | {already_voted.text}")
-        save_auth_json()
-        return
-    except TimeoutException:
-        log.info(f"{current_ip} | You have not voted on all sites within the past 12 hours. Proceeding to vote!")
+    while True:
+        driver.refresh()
+        voted_sites.clear()
+
+        while True:
+            vote(wait)
+
+            if len(voted_sites) != 4:
+                log.warning("At least one website is votable still!")
+                log.warning(voted_sites)
+            else:
+                break
+
+        log.info("Completed voting. Saving auth code1")
+        save_auth_code(driver, wait)
+
+        change_ip()
+
+
+def vote(wait):
+    current_ip = get_ip()
 
     votable_sites_dict = check_votable_sites()
 
-    log.info(votable_sites_dict)
+    if not votable_sites_dict:
+        log.info(f"All sites have already been voted on from {current_ip}!")
+        return
 
-    for siteid, value in votable_sites_dict.items():
-        if not value:
-            log.debug(siteid, value)
-            votable_site = driver.find_element(By.CSS_SELECTOR, f'a[siteid=\'{siteid}\']')
-            votable_site.click()
+    vote_site_url_dict = {}
+    for siteid in votable_sites_dict.keys():
+        try:
+            url_element = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, f'a[siteid=\'{siteid}\']')))
+            url = url_element.get_attribute('href')
+            vote_site_url_dict[siteid] = url
+        except TimeoutException as e:
+            log.critical(f"Unable to find element for siteid: {siteid}. Error: {str(e)}")
 
-            # Get all tabs
-            window_handles = driver.window_handles
-
-            # Switch driver focus to new tab
-            new_table_handle = window_handles[-1]
-            driver.switch_to.window(new_table_handle)
-
-            site_name = all_votable_sites.get(int(siteid), "")
-            module_name = site_name.lower().replace("-", "")
-
+    with ProcessPoolExecutor() as executor:
+        futures = {executor.submit(vote_site, (siteid, url)): (siteid, url) for siteid, url in vote_site_url_dict.items()}
+        for future in concurrent.futures.as_completed(futures):
+            siteid, url = futures[future]
             try:
-                log.info(f"Voting on site: {site_name} (id: {siteid})")
-                module = importlib.import_module(module_name)
-                getattr(module, "vote")(driver, wait, log)
-                log.info(f"Cleaning up {site_name} tab")
-                cleanup(window_handles)
-            except ImportError:
-                log.error(f"Module {module_name} not found!")
+                vote_successful = future.result()
+                if vote_successful:
+                    voted_sites.append(siteid)
+                    log.info(f"Successfully added: {url} to the voted list")
+                else:
+                    log.error(f"Failed to vote: {url}. Trying again later")
+            except Exception as e:
+                log.error(f"Site {siteid} generated an exception: {e}")
 
-    save_auth_json()
+
+def vote_site(args):
+    siteid, site_url = args
+
+    driver = create_driver()
+    wait = create_wait(driver, 10)
+    driver.set_window_size(1920, 1080)
+    driver.get(site_url)
+
+    site_name = all_votable_sites.get(int(siteid), "")
+    module_name = site_name.lower().replace("-", "")
+
+    vote_successful = False
+
+    try:
+        try:
+            log.info(f"Voting on site: {site_name} (id: {siteid})")
+            module = importlib.import_module(module_name)
+            getattr(module, "vote")(driver, wait, log)
+            log.info(f"Cleaning up {site_name} tab")
+            driver.quit()
+        except ImportError:
+            log.error(f"Module {module_name} not found!")
+            driver.quit()
+
+        vote_successful = True
+    except Exception as e:
+        pass
+
+    return vote_successful
 
 
-def save_auth_json():
+def save_auth_code(driver, wait):
     log.debug("saving auth")
     current_ip = get_ip()
-    votable_sites_dict = check_votable_sites()
 
-    if any(value is False for value in votable_sites_dict.values()):
+    if len(voted_sites) != 4:
         log.info("At least one website is votable still!")
-        log.info(votable_sites_dict)
-        vote()
+        vote(wait)
     else:
-        auth_code = get_auth()
+        auth_code = get_auth(driver, wait)
         try:
             with open("auth_codes.json", "r") as file:
                 data = json.load(file)
@@ -116,17 +157,13 @@ def save_auth_json():
         sql_database.save_data(current_ip, current_region, auth_code, log)
 
 
-def get_auth():
+def get_auth(driver, wait):
     try:
         authcode = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#notice-text")))
         driver.refresh()
 
         while True:
             authcode = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#notice-text")))
-            log.info(f"get_auth while loop: {authcode.text}")
-            # authcode may be getting stuck here for some reason and not sure why. probably a server issue
-            # best to investigate a bit further to confirm and then put a for loop instead and only repeat ~5 times
-            # before breaking out of the loop and simply changing IPs
             if authcode.text == "------":
                 log.info(authcode.text)
                 driver.refresh()
@@ -134,7 +171,7 @@ def get_auth():
                 break
     except TimeoutException:
         log.warning("Failed to get auth code! Trying again")
-        main()
+        return False
 
     return authcode.text
 
@@ -167,7 +204,6 @@ def change_ip():
 
     log.info(f"New IP: {output.strip()}")
     log.info(f"New Region: {region_to_connect}")
-    main()
 
 
 def get_vpn_regions():
@@ -199,14 +235,11 @@ def check_votable_sites():
 
     data = json_data['data']
 
-    button_selector = ".vote_content > .btn-oldstyle2"
-
     votable_sites_dict = {}
 
-    for button in driver.find_elements(By.CSS_SELECTOR, button_selector):
-        siteid = button.get_attribute('siteid')
-        value = data.get(siteid, 0)
-        votable_sites_dict[siteid] = bool(value)
+    for key, value in all_votable_sites.items():
+        if value and data.get(str(key)) == 0:
+            votable_sites_dict[key] = value
 
     return votable_sites_dict
 
@@ -241,22 +274,9 @@ def setup_logging():
     logger.addHandler(file_handler)
 
 
-def cleanup(window_handles):
-    driver.close()
-
-    main_tab_handle = window_handles[0]
-    driver.switch_to.window(main_tab_handle)
-
-
 def application_exit():
     log.info("Exiting application and cleaning up")
-    driver.quit()
-    subprocess.check_output("piactl disconnect", shell=True)
+    #subprocess.check_output("piactl disconnect", shell=True)
 
 
-setup_logging()
-atexit.register(application_exit)
-get_vpn_regions()
-change_ip()
 main()
-driver.quit()

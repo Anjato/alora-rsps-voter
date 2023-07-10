@@ -8,6 +8,7 @@ import importlib
 import json
 import requests
 import subprocess
+import sys
 import time
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
@@ -19,7 +20,6 @@ driver.set_window_size(1920, 1080)
 
 # Set vote url
 vote_url = "https://www.alora.io/vote/"
-ip_url = "https://api.my-ip.io/ip"
 all_votable_sites = {1: "RuneLocus", 2: "", 3: "TopG", 4: "RSPS-List", 5: "", 6: "", 7: "MoparScape", 8: "", 9: ""}
 vpn_regions_dict = {}
 
@@ -168,7 +168,15 @@ def get_vpn_regions():
 
 
 def getip():
-    return requests.get(ip_url).text
+    vpn_state = subprocess.check_output("piactl get connectionstate", shell=True).decode("utf-8")
+
+    if vpn_state.strip() == "Connected":
+        return subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8").strip()
+    elif vpn_state.strip() == "Disconnected":
+        return subprocess.check_output("piactl get pubip", shell=True).decode("utf-8").strip()
+    else:
+        print(f"The fuck is the VPN state? {vpn_state.strip()}")
+        sys.exit(1)
 
 
 def check_votable_sites():
@@ -204,5 +212,6 @@ def application_exit():
 
 atexit.register(application_exit)
 get_vpn_regions()
+changeip()
 main()
 driver.quit()

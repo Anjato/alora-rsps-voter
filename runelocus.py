@@ -3,13 +3,13 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs
 
 
-def test_split_tunnel():
+def test_split_tunnel(log):
     test_url = "https://api.my-ip.io/ip"
     response = requests.get(test_url)
-    print(response.text)
+    log.info(response.text)
 
 
-def vote(driver, wait):
+def vote(driver, wait, log):
     cookies = driver.get_cookies()
     url = driver.current_url
     parsed_url = urlparse(url)
@@ -52,10 +52,11 @@ def vote(driver, wait):
         soup = BeautifulSoup(html, "html.parser")
         vote_result_element = soup.select_one("#vote-process-block")
 
-        print(vote_result_element.text.strip())
-
         if vote_result_element.text == "Thanks, your vote has been recorded!":
-            print("Voted on RuneLocus successfully!")
+            log.inf(vote_result_element.text.strip())
+            log.info("Voted on RuneLocus successfully!")
             break
+        else:
+            log.warning(vote_result_element.text.strip())
     else:
-        print("RuneLocus vote FAILED!")
+        log.error("RuneLocus vote FAILED!")

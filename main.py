@@ -4,8 +4,10 @@ from driver_utils import create_driver, create_wait
 
 # other modules
 import atexit
+import colorlog
 import importlib
 import json
+import logging as log
 import random
 import requests
 import subprocess
@@ -38,19 +40,19 @@ def vote():
         # Check if already voted on all websites
         already_voted_element = ".vote_content > h2:nth-child(2)"
         already_voted = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, already_voted_element)))
-        print(f"{current_ip} | {already_voted.text}")
+        log.info(f"{current_ip} | {already_voted.text}")
         save_auth_json()
         return
     except TimeoutException:
-        print(f"{current_ip} | You have not voted on all sites within the past 12 hours. Proceeding to vote!")
+        log.info(f"{current_ip} | You have not voted on all sites within the past 12 hours. Proceeding to vote!")
 
     votable_sites_dict = check_votable_sites()
 
-    print(votable_sites_dict)
+    log.info(votable_sites_dict)
 
     for siteid, value in votable_sites_dict.items():
         if not value:
-            print(siteid, value)
+            log.debug(siteid, value)
             votable_site = driver.find_element(By.CSS_SELECTOR, f'a[siteid=\'{siteid}\']')
             votable_site.click()
 
@@ -65,25 +67,28 @@ def vote():
             module_name = site_name.lower().replace("-", "")
 
             try:
-                print(f"Voting on site: {site_name} (id: {siteid})")
+                log.info(f"Voting on site: {site_name} (id: {siteid})")
                 module = importlib.import_module(module_name)
-                getattr(module, "vote")(driver, wait)
-                print(f"Cleaning up {site_name} tab")
+                getattr(module, "vote")(driver, wait, log)
+                log.info(f"Cleaning up {site_name} tab")
                 cleanup(window_handles)
             except ImportError:
-                print(f"Module {module_name} not found!")
+                log.error(f"Module {module_name} not found!")
 
     save_auth_json()
 
 
 def save_auth_json():
+    log.debug("saving auth")
     current_ip = getip()
-    auth_code = getauth()
+    auth_code = get_auth()
     votable_sites_dict = check_votable_sites()
 
+    log.debug(votable_sites_dict)
+
     if any(value is False for value in votable_sites_dict.values()):
-        print("At least one website is votable still!")
-        print(votable_sites_dict)
+        log.info("At least one website is votable still!")
+        log.info(votable_sites_dict)
         vote()
     else:
         try:
@@ -105,39 +110,40 @@ def save_auth_json():
 
         data[current_ip] = ip_data
 
-        print("Saving data to JSON file")
+        log.info("Saving data to JSON file")
         with open("auth_codes.json", "w") as file:
             json.dump(data, file, indent=4)
 
         current_region = subprocess.check_output("piactl get region", shell=True).decode("utf-8")
-        sql_database.save_data(current_ip, current_region, auth_code)
+        sql_database.save_data(current_ip, current_region, auth_code, log)
 
 
-def getauth():
+def get_auth():
     try:
         authcode = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#notice-text")))
         driver.refresh()
 
         while True:
             authcode = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#notice-text")))
-
+            log.info(f"get_auth while loop: {authcode.text}")
             if authcode.text == "------":
+                log.info(authcode.text)
                 driver.refresh()
             else:
                 break
     except TimeoutException:
-        print("Failed to get auth code! Trying again")
+        log.warning("Failed to get auth code! Trying again")
         main()
 
     return authcode.text
 
 
 def changeip():
-    print("Disconnecting from VPN")
+    log.info("Disconnecting from VPN")
     subprocess.check_output("piactl disconnect", shell=True)
 
     output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
-    print("Waiting for VPN to disconnect")
+    log.info("Waiting for VPN to disconnect")
     while output.strip() != "Unknown":
         output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
 
@@ -153,13 +159,13 @@ def changeip():
     subprocess.check_output(f"piactl set region {region_to_connect}", shell=True)
     subprocess.check_output("piactl connect", shell=True)
 
-    print("Waiting for VPN to connect")
+    log.info("Waiting for VPN to connect")
     output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
     while output.strip() == "Unknown":
         output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
 
-    print(f"New IP: {output.strip()}")
-    print(f"New Region: {region_to_connect}")
+    log.info(f"New IP: {output.strip()}")
+    log.info(f"New Region: {region_to_connect}")
     main()
 
 
@@ -181,11 +187,12 @@ def getip():
     elif vpn_state.strip() == "Disconnected":
         return subprocess.check_output("piactl get pubip", shell=True).decode("utf-8").strip()
     else:
-        print(f"The fuck is the VPN state? {vpn_state.strip()}")
+        log.critical(f"The fuck is the VPN state? {vpn_state.strip()}")
         sys.exit(1)
 
 
 def check_votable_sites():
+    log.info("Checking votable sites")
     response = requests.get('https://www.alora.io/vote_includes/load.php?id=vote_data')
     json_data = response.json()
 
@@ -203,6 +210,36 @@ def check_votable_sites():
     return votable_sites_dict
 
 
+def setup_logging():
+    # Pretty colors :)
+    formatter = colorlog.ColoredFormatter(
+        "%(log_color)s%(asctime)s | %(levelname)s - %(message)s",
+        log_colors={
+            'DEBUG': 'cyan',
+            'INFO': 'green',
+            'WARNING': 'yellow',
+            'ERROR': 'red',
+            'CRITICAL': 'bold_red',
+        }
+    )
+
+    # Configure the logger
+    logger = log.getLogger()
+    logger.setLevel(log.INFO)
+
+    # Create a console handler
+    console_handler = log.StreamHandler()
+    console_handler.setLevel(log.DEBUG)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    # Create a file handler
+    file_handler = log.FileHandler('debug.log')
+    file_handler.setLevel(log.DEBUG)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+
 def cleanup(window_handles):
     driver.close()
 
@@ -211,11 +248,12 @@ def cleanup(window_handles):
 
 
 def application_exit():
-    print("Exiting application and cleaning up")
+    log.info("Exiting application and cleaning up")
     driver.quit()
     subprocess.check_output("piactl disconnect", shell=True)
 
 
+setup_logging()
 atexit.register(application_exit)
 get_vpn_regions()
 changeip()

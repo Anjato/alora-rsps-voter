@@ -5,7 +5,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as ec
 
 
-def vote(driver, wait):
+def vote(driver, wait, log):
     captcha_type = ""
 
     # Spam check, refreshes page to get rid of it :D
@@ -13,11 +13,11 @@ def vote(driver, wait):
         spam_check = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#captcha-image")))
         driver.refresh()
         while spam_check is not None:
-            print("Spam check exists! Bypassing...")
+            log.info("Spam check exists! Bypassing...")
             spam_check = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#captcha-image")))
             driver.refresh()
     except TimeoutException:
-        print("Spam check does not exist. Proceeding with voting!")
+        log.info("Spam check does not exist. Proceeding with voting!")
 
 
     # Check for reCaptchaV2
@@ -27,7 +27,7 @@ def vote(driver, wait):
         captcha_type = "recaptcha"
     except TimeoutException:
         captcha_type = None
-        print("reCaptchaV2 not found! Trying hCaptcha...")
+        log.warning("reCaptchaV2 not found! Trying hCaptcha...")
 
     if captcha_type is None:
         # Check for hCaptcha
@@ -37,10 +37,10 @@ def vote(driver, wait):
             captcha_type = "hcaptcha"
         except TimeoutException:
             captcha_type = None
-            print("hCaptcha not found!")
+            log.error("hCaptcha not found!")
 
     if captcha_type is None:
-        print("Cannot find reCaptcha or hCaptcha elements! Exiting application!")
+        log.critical("Cannot find reCaptcha or hCaptcha elements! Exiting application!")
         sys.exit(1)
 
     submit_vote_button = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#vote-btn")))
@@ -48,7 +48,7 @@ def vote(driver, wait):
 
     sitekey = captcha.get_attribute("data-sitekey")
     url = driver.current_url
-    print("Solving RSPS-List captcha...")
+    log.info("Solving RSPS-List captcha...")
 
     while True:
         if captcha_type == "recaptcha":
@@ -65,12 +65,12 @@ def vote(driver, wait):
 
     try:
         vote_success = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-success")))
-        print("Voted on RSPS-List successfully!")
+        log.info("Voted on RSPS-List successfully!")
     except TimeoutException:
         try:
             vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
-            print(f"ERROR: {vote_failed.text}")
+            log.error(vote_failed.text)
         except TimeoutException:
-            print("FATAL: Could not retrieve vote status!")
-            print(driver.page_source)
+            log.critical("Could not retrieve vote status!")
+            log.info(driver.page_source)
             sys.exit(1)

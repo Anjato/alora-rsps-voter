@@ -5,7 +5,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as ec
 
 
-def vote(driver, wait):
+def vote(driver, wait, log):
     captcha = wait.until(ec.element_to_be_clickable((By.CSS_SELECTOR, ".h-captcha")))
     hidden_element_one = wait.until(ec.invisibility_of_element_located((By.CSS_SELECTOR, '[name="g-recaptcha-response"]')))
     hidden_element_two = wait.until(ec.invisibility_of_element_located((By.CSS_SELECTOR, '[name="h-captcha-response"]')))
@@ -14,7 +14,7 @@ def vote(driver, wait):
     sitekey = captcha.get_attribute("data-sitekey")
     url = driver.current_url
 
-    print("Solving TopG captcha...")
+    log.info("Solving TopG captcha...")
 
     while True:
         captcha_result = hcaptcha_solver(sitekey, url)
@@ -29,14 +29,14 @@ def vote(driver, wait):
 
     try:
         vote_success = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-success")))
-        print("Voted on TopG successfully!")
+        log.info("Voted on TopG successfully!")
     except TimeoutException:
         try:
             vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
-            print(f"ERROR: {vote_failed.text}")
+            log.error(vote_failed.text)
         except TimeoutException:
-            print("FATAL: Could not retrieve vote status!")
-            print(driver.page_source)
+            log.critical("Could not retrieve vote status!")
+            log.info(driver.page_source)
             sys.exit(1)
 
 

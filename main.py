@@ -29,11 +29,11 @@ vpn_regions_list = []
 
 def main():
     vote()
-    changeip()
+    change_ip()
 
 
 def vote():
-    current_ip = getip()
+    current_ip = get_ip()
     driver.get(vote_url)
 
     try:
@@ -80,17 +80,15 @@ def vote():
 
 def save_auth_json():
     log.debug("saving auth")
-    current_ip = getip()
-    auth_code = get_auth()
+    current_ip = get_ip()
     votable_sites_dict = check_votable_sites()
-
-    log.debug(votable_sites_dict)
 
     if any(value is False for value in votable_sites_dict.values()):
         log.info("At least one website is votable still!")
         log.info(votable_sites_dict)
         vote()
     else:
+        auth_code = get_auth()
         try:
             with open("auth_codes.json", "r") as file:
                 data = json.load(file)
@@ -126,6 +124,9 @@ def get_auth():
         while True:
             authcode = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#notice-text")))
             log.info(f"get_auth while loop: {authcode.text}")
+            # authcode may be getting stuck here for some reason and not sure why. probably a server issue
+            # best to investigate a bit further to confirm and then put a for loop instead and only repeat ~5 times
+            # before breaking out of the loop and simply changing IPs
             if authcode.text == "------":
                 log.info(authcode.text)
                 driver.refresh()
@@ -138,7 +139,7 @@ def get_auth():
     return authcode.text
 
 
-def changeip():
+def change_ip():
     log.info("Disconnecting from VPN")
     subprocess.check_output("piactl disconnect", shell=True)
 
@@ -179,7 +180,7 @@ def get_vpn_regions():
     return random.shuffle(vpn_regions_list)
 
 
-def getip():
+def get_ip():
     vpn_state = subprocess.check_output("piactl get connectionstate", shell=True).decode("utf-8")
 
     if vpn_state.strip() == "Connected":
@@ -213,7 +214,7 @@ def check_votable_sites():
 def setup_logging():
     # Pretty colors :)
     formatter = colorlog.ColoredFormatter(
-        "%(log_color)s%(asctime)s | %(levelname)s - %(message)s",
+        "%(log_color)s%(asctime)s | %(levelname)-8s | %(message)s",
         log_colors={
             'DEBUG': 'cyan',
             'INFO': 'green',
@@ -256,6 +257,6 @@ def application_exit():
 setup_logging()
 atexit.register(application_exit)
 get_vpn_regions()
-changeip()
+change_ip()
 main()
 driver.quit()

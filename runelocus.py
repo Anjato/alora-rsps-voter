@@ -62,4 +62,4 @@ def vote(driver, wait, log):
         log.error("RuneLocus vote FAILED!")
         log.error("Verify the split tunnel is working correctly.")
         log.error("If the split tunnel is working, it is currently unknown why it would be failing. Maybe a banned IP?")
-        return "failed"
+        raise Exception

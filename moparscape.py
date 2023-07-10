@@ -1,4 +1,3 @@
-import sys
 from captchasolver import recaptcha2_solver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
@@ -17,9 +16,11 @@ def vote(driver, wait, log):
     log.info("Solving MoparScape captcha...")
 
     while True:
-        captcha_result = recaptcha2_solver(sitekey, url)
+
+        captcha_result = recaptcha2_solver(sitekey, url, log)
 
         if captcha_result != False:
+
             break
 
     driver.execute_script("arguments[0].value = arguments[1];", hidden_recaptcha_response, captcha_result)
@@ -34,6 +35,6 @@ def vote(driver, wait, log):
             vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
             log.error(vote_failed.text)
         except TimeoutException:
-            log.critical("Could not retrieve vote status!")
-            log.info(driver.page_source)
-            sys.exit(1)
+            log.error("Could not retrieve vote status!")
+            raise Exception
+

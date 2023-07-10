@@ -3,6 +3,12 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs
 
 
+def test_split_tunnel():
+    test_url = "https://api.my-ip.io/ip"
+    response = requests.get(test_url)
+    print(response.text)
+
+
 def vote(driver, wait):
     cookies = driver.get_cookies()
     url = driver.current_url
@@ -46,9 +52,10 @@ def vote(driver, wait):
         soup = BeautifulSoup(html, "html.parser")
         vote_result_element = soup.select_one("#vote-process-block")
 
+        print(vote_result_element.text.strip())
+
         if vote_result_element.text == "Thanks, your vote has been recorded!":
             print("Voted on RuneLocus successfully!")
             break
     else:
         print("RuneLocus vote FAILED!")
-

@@ -56,9 +56,12 @@ def vote(driver, wait, log):
         else:
             captcha_result = hcaptcha_solver(sitekey, url)
 
+        log.info(captcha_result)
+
         if captcha_result != False:
             break
 
+    log.info(hidden_recaptcha_response)
     driver.execute_script("arguments[0].value = arguments[1];", hidden_recaptcha_response, captcha_result)
 
     submit_vote_button.click()

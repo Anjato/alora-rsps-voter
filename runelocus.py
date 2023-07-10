@@ -53,10 +53,13 @@ def vote(driver, wait, log):
         vote_result_element = soup.select_one("#vote-process-block")
 
         if vote_result_element.text == "Thanks, your vote has been recorded!":
-            log.inf(vote_result_element.text.strip())
+            log.info(vote_result_element.text.strip())
             log.info("Voted on RuneLocus successfully!")
             break
         else:
             log.warning(vote_result_element.text.strip())
     else:
         log.error("RuneLocus vote FAILED!")
+        log.error("Verify the split tunnel is working correctly.")
+        log.error("If the split tunnel is working, it is currently unknown why it would be failing. Maybe a banned IP?")
+        return "failed"

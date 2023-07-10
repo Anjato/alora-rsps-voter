@@ -6,6 +6,7 @@ from driver_utils import create_driver, create_wait
 import atexit
 import importlib
 import json
+import random
 import requests
 import subprocess
 import sys
@@ -21,7 +22,7 @@ driver.set_window_size(1920, 1080)
 # Set vote url
 vote_url = "https://www.alora.io/vote/"
 all_votable_sites = {1: "RuneLocus", 2: "", 3: "TopG", 4: "RSPS-List", 5: "", 6: "", 7: "MoparScape", 8: "", 9: ""}
-vpn_regions_dict = {}
+vpn_regions_list = []
 
 
 def main():
@@ -45,8 +46,11 @@ def vote():
 
     votable_sites_dict = check_votable_sites()
 
+    print(votable_sites_dict)
+
     for siteid, value in votable_sites_dict.items():
         if not value:
+            print(siteid, value)
             votable_site = driver.find_element(By.CSS_SELECTOR, f'a[siteid=\'{siteid}\']')
             votable_site.click()
 
@@ -138,10 +142,10 @@ def changeip():
         output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
 
     # Remove first entry in dictionary
-    vpn_regions_dict.pop(next(iter(vpn_regions_dict), None), None)
+    vpn_regions_list.pop(0)
 
     # Change region to connect to the first entry in the dictionary
-    region_to_connect = next(iter(vpn_regions_dict.values()), None)
+    region_to_connect = vpn_regions_list[0]
 
     # Allow VPN to disconnect for long enough before connecting
     time.sleep(1)
@@ -154,7 +158,8 @@ def changeip():
     while output.strip() == "Unknown":
         output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
 
-    print(f"New IP: {output}")
+    print(f"New IP: {output.strip()}")
+    print(f"New Region: {region_to_connect}")
     main()
 
 
@@ -162,9 +167,10 @@ def get_vpn_regions():
     output = subprocess.check_output("piactl get regions", shell=True).decode("utf-8")
     regions = output.strip().split("\n")
 
-    vpn_regions_dict.clear()
-    for index, region in enumerate(regions[1:], start=1):
-        vpn_regions_dict[index] = region
+    for region in regions[1:]:
+        vpn_regions_list.append(region)
+
+    return random.shuffle(vpn_regions_list)
 
 
 def getip():

@@ -25,6 +25,6 @@ def create_driver():
     return driver
 
 
-def create_wait(driver, timeout=3):
+def create_wait(driver, timeout=10):
     wait = WebDriverWait(driver, timeout)
     return wait

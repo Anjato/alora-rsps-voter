@@ -66,7 +66,13 @@ def vote(driver, wait):
     try:
         vote_success = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-success")))
         print("Voted on RSPS-List successfully!")
-    except TimeoutException as e:
-        vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
+    except TimeoutException:
         print("RSPS-List vote FAILED!")
-        print(f"ERROR: {vote_failed}")
+
+    try:
+        vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
+        print(f"ERROR: {vote_failed.text}")
+    except TimeoutException:
+        print("FATAL: Vote success and failed elements are missing!")
+        print(driver.page_source)
+        sys.exit(1)

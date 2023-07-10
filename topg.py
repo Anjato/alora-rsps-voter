@@ -1,3 +1,4 @@
+import sys
 from captchasolver import hcaptcha_solver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
@@ -29,8 +30,13 @@ def vote(driver, wait):
     try:
         vote_success = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-success")))
         print("Voted on TopG successfully!")
-    except TimeoutException as e:
-        vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
+    except TimeoutException:
         print("TopG vote FAILED!")
-        print(f"ERROR: {vote_failed}")
 
+    try:
+        vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
+        print(f"ERROR: {vote_failed.text}")
+    except TimeoutException:
+        print("FATAL: Vote success and failed elements are missing!")
+        print(driver.page_source)
+        sys.exit(1)

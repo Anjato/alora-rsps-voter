@@ -5,3 +5,4 @@ captcha-images
 *.iml
 *.json
 *.old
+*.log

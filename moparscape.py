@@ -30,12 +30,10 @@ def vote(driver, wait, *args):
         vote_success = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-success")))
         print("Voted on MoparScape successfully!")
     except TimeoutException:
-        print("MoparScape vote FAILED!")
-
-    try:
-        vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
-        print(f"ERROR: {vote_failed.text}")
-    except TimeoutException:
-        print("FATAL: Vote success and failed elements are missing!")
-        print(driver.page_source)
-        sys.exit(1)
+        try:
+            vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
+            print(f"ERROR: {vote_failed.text}")
+        except TimeoutException:
+            print("FATAL: Could not retrieve vote status!")
+            print(driver.page_source)
+            sys.exit(1)

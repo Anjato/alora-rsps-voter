@@ -1,66 +1,91 @@
 # my modules
 import sql_database
 from driver_utils import create_driver, create_wait
-
+from runelocus import test_split_tunnel
 # other modules
 import atexit
 import colorlog
 import concurrent
+import datetime
 import importlib
 import json
 import logging as log
 import random
 import requests
+import select
 import subprocess
 import sys
 import time
+from bs4 import BeautifulSoup
 from concurrent.futures import ProcessPoolExecutor
+from retry import retry
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as ec
 
 # Set vote url
 vote_url = "https://www.alora.io/vote/"
-all_votable_sites = {1: "RuneLocus", 2: "", 3: "TopG", 4: "RSPS-List", 5: "", 6: "", 7: "MoparScape", 8: "", 9: ""}
+all_votable_sites = {1: "RuneLocus", 3: "TopG", 4: "RSPS-List", 7: "MoparScape"}
 vpn_regions_list = []
 voted_sites = []
 
 
 def main():
     setup_logging()
-    atexit.register(application_exit)
 
     get_vpn_regions()
     change_ip()
 
     driver = create_driver()
+    atexit.register(application_exit, driver)
     wait = create_wait(driver, 10)
     driver.set_window_size(1920, 1080)
     driver.get(vote_url)
 
     while True:
-        driver.refresh()
+        max_retries = 0
         voted_sites.clear()
+        driver.refresh()
 
         while True:
             vote(wait)
 
-            if len(voted_sites) != 4:
-                log.warning("At least one website is votable still!")
-                log.warning(voted_sites)
+            while max_retries <= 3:
+                if len(voted_sites) != 4:
+                    log.warning("At least one website is votable still!")
+                    log.warning(voted_sites)
+                    max_retries += 1
+                    vote(wait)
+                else:
+                    log.info("No more votable sites found!")
+                    max_retries = 0
+                    break
+
+            if max_retries >= 3:
+                voting_failed = True
             else:
-                break
+                voting_failed = False
 
-        log.info("Completed voting. Saving auth code1")
-        save_auth_code(driver, wait)
+            if voting_failed:
+                log.error("Unknown error! Critical failure on at least one site. Possibly a bad or banned VPN IP address.")
+                log.info("Changing IP address")
+                change_ip()
+            else:
+                log.info("Completed voting. Saving auth code")
+                save_auth_code(driver, wait)
+                change_ip()
 
-        change_ip()
+            break
 
 
 def vote(wait):
     current_ip = get_ip()
 
-    votable_sites_dict = check_votable_sites()
+    try:
+        votable_sites_dict = check_votable_sites()
+    except ConnectionError:
+        change_ip()
+        return
 
     if not votable_sites_dict:
         log.info(f"All sites have already been voted on from {current_ip}!")
@@ -68,12 +93,19 @@ def vote(wait):
 
     vote_site_url_dict = {}
     for siteid in votable_sites_dict.keys():
+        if siteid in voted_sites:
+            log.info(f"Site {siteid} already voted, skipping...")
+            continue
         try:
             url_element = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, f'a[siteid=\'{siteid}\']')))
             url = url_element.get_attribute('href')
             vote_site_url_dict[siteid] = url
         except TimeoutException as e:
+            # This means it cannot find the button on the main page. Most likely an issue with the network/vpn so
+            # changing the IP here is kinda the only workaround.
             log.critical(f"Unable to find element for siteid: {siteid}. Error: {str(e)}")
+            voted_sites.clear()
+            return
 
     with ProcessPoolExecutor() as executor:
         futures = {executor.submit(vote_site, (siteid, url)): (siteid, url) for siteid, url in vote_site_url_dict.items()}
@@ -108,15 +140,15 @@ def vote_site(args):
             log.info(f"Voting on site: {site_name} (id: {siteid})")
             module = importlib.import_module(module_name)
             getattr(module, "vote")(driver, wait, log)
-            log.info(f"Cleaning up {site_name} tab")
-            driver.quit()
+            vote_successful = True
         except ImportError:
             log.error(f"Module {module_name} not found!")
             driver.quit()
-
-        vote_successful = True
-    except Exception as e:
+    except Exception:
         pass
+    finally:
+        log.info(f"Cleaning up {site_name} tab")
+        driver.quit()
 
     return vote_successful
 
@@ -165,6 +197,8 @@ def get_auth(driver, wait):
         while True:
             authcode = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#notice-text")))
             if authcode.text == "------":
+                log.critical("If this loop is stuck, it means there is a logic error elsewhere!")
+                log.critical("Find where this was called and manually trace back")
                 log.info(authcode.text)
                 driver.refresh()
             else:
@@ -176,36 +210,50 @@ def get_auth(driver, wait):
     return authcode.text
 
 
+@retry(subprocess.CalledProcessError, tries=3, delay=5)
 def change_ip():
+    region_to_connect = []
+
     log.info("Disconnecting from VPN")
     subprocess.check_output("piactl disconnect", shell=True)
 
-    output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
-    log.info("Waiting for VPN to disconnect")
-    while output.strip() != "Unknown":
-        output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
+    # Start monitoring
+    monitor_process = subprocess.Popen(['piactl', 'monitor', 'vpnip'], stdout=subprocess.PIPE, universal_newlines=True)
 
-    # Remove first entry in dictionary
     vpn_regions_list.pop(0)
 
-    # Change region to connect to the first entry in the dictionary
-    region_to_connect = vpn_regions_list[0]
+    try:
+        region_to_connect = vpn_regions_list[0]
+    except IndexError:
+        log.warning("Ran out of VPN regions! Refreshing region list")
+        get_vpn_regions()
 
-    # Allow VPN to disconnect for long enough before connecting
-    time.sleep(1)
+    time.sleep(2)
 
+    log.info("Connecting to VPN")
     subprocess.check_output(f"piactl set region {region_to_connect}", shell=True)
     subprocess.check_output("piactl connect", shell=True)
 
-    log.info("Waiting for VPN to connect")
-    output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
-    while output.strip() == "Unknown":
-        output = subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8")
+    start_time = time.time()
+    try:
+        while True:
+            # Check if there's output from the monitor process
+            if select.select([monitor_process.stdout], [], [], 0.0)[0]:
+                line = monitor_process.stdout.readline().strip()
+                if line != "Unknown":
+                    log.info(f"New IP: {line}")
+                    log.info(f"New Region: {region_to_connect}")
+                    break
+            elif time.time() - start_time > 30:  # If 30 seconds have passed
+                log.error("VPN cannot connect. Trying again")
+                raise subprocess.CalledProcessError(-1, "piactl connect", "VPN connect failed")
+            else:
+                time.sleep(0.5)
+    finally:
+        monitor_process.terminate()
 
-    log.info(f"New IP: {output.strip()}")
-    log.info(f"New Region: {region_to_connect}")
 
-
+@retry(subprocess.CalledProcessError, tries=3, delay=5)
 def get_vpn_regions():
     output = subprocess.check_output("piactl get regions", shell=True).decode("utf-8")
     regions = output.strip().split("\n")
@@ -217,31 +265,61 @@ def get_vpn_regions():
 
 
 def get_ip():
-    vpn_state = subprocess.check_output("piactl get connectionstate", shell=True).decode("utf-8")
+    monitor_process = subprocess.Popen(['piactl', 'monitor', 'vpnip'], stdout=subprocess.PIPE, universal_newlines=True)
 
-    if vpn_state.strip() == "Connected":
-        return subprocess.check_output("piactl get vpnip", shell=True).decode("utf-8").strip()
-    elif vpn_state.strip() == "Disconnected":
-        return subprocess.check_output("piactl get pubip", shell=True).decode("utf-8").strip()
-    else:
-        log.critical(f"The fuck is the VPN state? {vpn_state.strip()}")
-        sys.exit(1)
+    start_time = time.time()
+    timeout = 30  # timeout after 30 seconds
+
+    try:
+        while True:
+            if select.select([monitor_process.stdout], [], [], 0.0)[0]:
+                output = monitor_process.stdout.readline().strip()
+                if output != "Unknown":
+                    return output
+            if time.time() - start_time > timeout:
+                break
+    finally:
+        # Terminate the process if it's still running
+        monitor_process.terminate()
+
+    log.critical("Wtf is the VPN state? Could not get IP.")
+    sys.exit(1)
 
 
 def check_votable_sites():
     log.info("Checking votable sites")
-    response = requests.get('https://www.alora.io/vote_includes/load.php?id=vote_data')
-    json_data = response.json()
 
-    data = json_data['data']
+    try:
+        response = requests.get('https://www.alora.io/vote_includes/load.php?id=vote_data&bypasscache=')
+    except requests.exceptions.ConnectionError:
+        log.error("TCP/IP error trying to establish network connection to web server!")
+        raise ConnectionError
 
-    votable_sites_dict = {}
+    current_ip = get_ip()
+    max_retries = 0
 
-    for key, value in all_votable_sites.items():
-        if value and data.get(str(key)) == 0:
-            votable_sites_dict[key] = value
+    while max_retries <= 5:
+        try:
+            json_data = response.json()
 
-    return votable_sites_dict
+            data = json_data['data']
+
+            votable_sites_dict = {}
+
+            for key, value in all_votable_sites.items():
+                if value and data.get(str(key)) == 0:
+                    votable_sites_dict[key] = value
+            return votable_sites_dict
+
+        except requests.exceptions.JSONDecodeError:
+            soup = BeautifulSoup(response.text, "html.parser")
+            server_bad_query = soup.find("h2").text
+            log.error(server_bad_query)
+            max_retries += 1
+            time.sleep(3)
+
+    log.error(f"Unknown error! Server refusing to return query for IP {current_ip}")
+    raise ConnectionError
 
 
 def setup_logging():
@@ -257,6 +335,9 @@ def setup_logging():
         }
     )
 
+    # Standard formatter for file handler
+    file_formatter = log.Formatter("%(asctime)s | %(levelname)-8s | %(message)s")
+
     # Configure the logger
     logger = log.getLogger()
     logger.setLevel(log.INFO)
@@ -268,14 +349,15 @@ def setup_logging():
     logger.addHandler(console_handler)
 
     # Create a file handler
-    file_handler = log.FileHandler('debug.log')
+    file_handler = log.FileHandler(f'logs/{datetime.date.today()}.log')
     file_handler.setLevel(log.DEBUG)
-    file_handler.setFormatter(formatter)
+    file_handler.setFormatter(file_formatter)
     logger.addHandler(file_handler)
 
 
-def application_exit():
+def application_exit(driver):
     log.info("Exiting application and cleaning up")
+    driver.quit()
     #subprocess.check_output("piactl disconnect", shell=True)
 
 

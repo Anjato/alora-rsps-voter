@@ -12,7 +12,7 @@ def get_connection_string():
 def save_data(ip, region, auth, log):
     connection_string = get_connection_string()
     connection = pyodbc.connect(connection_string)
-    log.info("Connecting to SQL database")
+    log.info("SQL | Connecting to SQL database")
     try:
         with connection.cursor() as cursor:
             # Check if the auth code already exists for the given IP
@@ -22,17 +22,18 @@ def save_data(ip, region, auth, log):
             duplicate_found = result is not None
             if duplicate_found:
                 duplicate_ip, duplicate_auth_code = result
-                log.warning(f"Duplicate IP and auth code found: IP={duplicate_ip}, Auth code={duplicate_auth_code}. Skipping data insertion")
+                log.warning(f"SQL | Duplicate IP and auth code found: IP={duplicate_ip}, "
+                            f"Auth code={duplicate_auth_code}. Skipping data insertion")
                 return
 
             current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             data = (ip, region, auth, current_datetime, 0)
 
             stored_procedure = "{CALL sp_InsertAuthCode(?, ?, ?, ?, ?)}"
-            log.info("Saving data to SQL database")
+            log.info("SQL | Saving data to SQL database")
             cursor.execute(stored_procedure, data)
             connection.commit()
 
     finally:
-        log.info("Closing SQL connection")
+        log.info("SQL | Closing SQL connection")
         connection.close()

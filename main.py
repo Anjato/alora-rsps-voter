@@ -1,7 +1,7 @@
 # my modules
 import sql_database
 from driver_utils import create_driver, create_wait
-from runelocus import test_split_tunnel
+
 # other modules
 import atexit
 import colorlog

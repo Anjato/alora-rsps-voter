@@ -11,7 +11,7 @@ def hcaptcha_solver(sitekey, url, log):
     try:
         response = solver.hcaptcha(sitekey=sitekey, url=url)
     except TimeoutException:
-        log.warning("2captcha request timed out. Trying again!")
+        log.warning(f"2captcha | Request timed out for {url}. Trying again!")
         return False
 
     solution = response["code"]
@@ -25,7 +25,7 @@ def recaptcha2_solver(sitekey, url, log):
     try:
         response = solver.recaptcha(sitekey=sitekey, url=url)
     except TimeoutException:
-        log.warning("2captcha request timed out. Trying again!")
+        log.warning(f"2captcha | Request timed out for {url}. Trying again!")
         return False
 
     solution = response["code"]

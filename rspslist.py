@@ -5,19 +5,20 @@ from selenium.webdriver.support import expected_conditions as ec
 
 
 def vote(driver, wait, log):
-    captcha_type = ""
+    captcha_type = None
+    captcha = None
+    hidden_recaptcha_response = None
 
     # Spam check, refreshes page to get rid of it :D
     try:
         spam_check = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#captcha-image")))
         driver.refresh()
         while spam_check is not None:
-            log.info("Spam check exists! Bypassing...")
+            log.info("RSPS-List | Spam check exists! Bypassing...")
             spam_check = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#captcha-image")))
             driver.refresh()
     except TimeoutException:
-        log.info("Spam check does not exist. Proceeding with voting!")
-
+        log.info("RSPS-List | Spam check does not exist. Proceeding with voting!")
 
     # Check for reCaptchaV2
     try:
@@ -26,7 +27,7 @@ def vote(driver, wait, log):
         captcha_type = "recaptcha"
     except TimeoutException:
         captcha_type = None
-        log.warning("reCaptchaV2 not found! Trying hCaptcha...")
+        log.warning("RSPS-List | reCaptchaV2 not found! Trying hCaptcha...")
 
     if captcha_type is None:
         # Check for hCaptcha
@@ -36,17 +37,22 @@ def vote(driver, wait, log):
             captcha_type = "hcaptcha"
         except TimeoutException:
             captcha_type = None
-            log.error("hCaptcha not found!")
+            log.error("RSPS-List | hCaptcha not found!")
 
     if captcha_type is None:
-        log.error("Cannot find reCaptcha or hCaptcha elements!")
+        log.error("RSPS-List | Cannot find reCaptcha or hCaptcha elements!")
 
     submit_vote_button = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "#vote-btn")))
     driver.execute_script("arguments[0].removeAttribute('disabled')", submit_vote_button)
 
-    sitekey = captcha.get_attribute("data-sitekey")
+    if captcha is not None:
+        sitekey = captcha.get_attribute("data-sitekey")
+    else:
+        log.error("RSPS-List | Captcha element not found! Trying again later")
+        return
+
     url = driver.current_url
-    log.info("Solving RSPS-List captcha...")
+    log.info("RSPS-List | Solving RSPS-List captcha...")
 
     while True:
         if captcha_type == "recaptcha":
@@ -54,19 +60,26 @@ def vote(driver, wait, log):
         else:
             captcha_result = hcaptcha_solver(sitekey, url, log)
 
-        if captcha_result != False:
+        # Python is fucking weird. Even though it returns a solution, an empty string is considered 'falsy' and
+        # a non-empty string is considered 'truthy'. What the hell???????????
+        if captcha_result:
             break
 
-    driver.execute_script("arguments[0].value = arguments[1];", hidden_recaptcha_response, captcha_result)
+    if hidden_recaptcha_response is not None:
+        driver.execute_script("arguments[0].value = arguments[1];", hidden_recaptcha_response, captcha_result)
+    else:
+        log.error("Hidden captcha response element not found! Trying again later")
+        return
+
     submit_vote_button.click()
 
     try:
         vote_success = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-success")))
-        log.info("Voted on RSPS-List successfully!")
+        log.info("RSPS-List | Voted on RSPS-List successfully!")
     except TimeoutException:
         try:
             vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
-            log.error(vote_failed.text)
+            log.error(f"RSPS-List | {vote_failed.text}")
         except TimeoutException:
-            log.error("Could not retrieve vote status!")
+            log.error("RSPS-List | Could not retrieve vote status!")
             raise Exception

@@ -13,12 +13,14 @@ def vote(driver, wait, log):
     sitekey = captcha.get_attribute("data-sitekey")
     url = driver.current_url
 
-    log.info("Solving TopG captcha...")
+    log.info("TopG | Solving TopG captcha...")
 
     while True:
         captcha_result = hcaptcha_solver(sitekey, url, log)
 
-        if captcha_result != False:
+        # Python is fucking weird. Even though it returns a solution, an empty string is considered 'falsy' and
+        # a non-empty string is considered 'truthy'. What the hell???????????
+        if captcha_result:
             break
 
     driver.execute_script("arguments[0].value = arguments[1];", hidden_element_one, captcha_result)
@@ -28,11 +30,11 @@ def vote(driver, wait, log):
 
     try:
         vote_success = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-success")))
-        log.info("Voted on TopG successfully!")
+        log.info("TopG | Voted on TopG successfully!")
     except TimeoutException:
         try:
             vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
-            log.error(vote_failed.text)
+            log.error(f"TopG | {vote_failed.text}")
         except TimeoutException:
-            log.error("Could not retrieve vote status!")
+            log.error("TopG | Could not retrieve vote status!")
             raise Exception

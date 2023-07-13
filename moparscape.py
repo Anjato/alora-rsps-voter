@@ -13,14 +13,15 @@ def vote(driver, wait, log):
     sitekey = captcha.get_attribute("data-sitekey")
     url = driver.current_url
 
-    log.info("Solving MoparScape captcha...")
+    log.info("MoparScape | Solving MoparScape captcha...")
 
     while True:
 
         captcha_result = recaptcha2_solver(sitekey, url, log)
 
-        if captcha_result != False:
-
+        # Python is fucking weird. Even though it returns a solution, an empty string is considered 'falsy' and
+        # a non-empty string is considered 'truthy'. What the hell???????????
+        if captcha_result:
             break
 
     driver.execute_script("arguments[0].value = arguments[1];", hidden_recaptcha_response, captcha_result)
@@ -29,12 +30,13 @@ def vote(driver, wait, log):
 
     try:
         vote_success = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-success")))
-        log.info("Voted on MoparScape successfully!")
+        log.info("MoparScape | Voted on MoparScape successfully!")
     except TimeoutException:
         try:
             vote_failed = wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, ".alert-danger")))
-            log.error(vote_failed.text)
+            log.error(f"MoparScape | {vote_failed.text}")
+            raise Exception
         except TimeoutException:
-            log.error("Could not retrieve vote status!")
+            log.error("MoparScape | Could not retrieve vote status!")
             raise Exception
 

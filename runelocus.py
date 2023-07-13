@@ -6,7 +6,7 @@ from urllib.parse import urlparse, parse_qs
 def test_split_tunnel(log):
     test_url = "https://api.my-ip.io/ip"
     response = requests.get(test_url)
-    log.info(response.text)
+    log.info(f"RuneLocus | {response.text}")
 
 
 def vote(driver, wait, log):
@@ -43,7 +43,7 @@ def vote(driver, wait, log):
             'callback': url_callback,
             'ua': 'dnZ6T3RPVzgxMnhqWkx1RnBCWG90N0JobDkwTWZqN3E1M3F3OENXR2gvcmc1ckVKbTF1QVJ'
                   'PeUNyc0tzMmE4eDNoNHQ3M045ZzIvZG1vaGl1Tmp6T3NrV0ZsTkpNSCtxMjJGUFNwY3dGaDQ9',
-            'vote': 'Vote now'
+            'vote': 'Vote+now'
         }
 
         response = requests.post(url, headers=headers, data=data)
@@ -53,13 +53,13 @@ def vote(driver, wait, log):
         vote_result_element = soup.select_one("#vote-process-block")
 
         if vote_result_element.text == "Thanks, your vote has been recorded!":
-            log.info(vote_result_element.text.strip())
-            log.info("Voted on RuneLocus successfully!")
+            log.info(f"RuneLocus | {vote_result_element.text.strip()}")
+            log.info("RuneLocus | Voted on RuneLocus successfully!")
             break
         else:
-            log.warning(vote_result_element.text.strip())
+            log.warning(f"RuneLocus | {vote_result_element.text.strip()}")
     else:
-        log.error("RuneLocus vote FAILED!")
-        log.error("Verify the split tunnel is working correctly.")
-        log.error("If the split tunnel is working, it is currently unknown why it would be failing. Maybe a banned IP?")
+        log.error("RuneLocus | Vote FAILED!")
+        log.error("RuneLocus | Verify the split tunnel is working correctly.")
+        log.error("RuneLocus | If the split tunnel is working, it is currently unknown why it would be failing. Maybe a banned IP?")
         raise Exception
